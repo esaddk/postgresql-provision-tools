@@ -107,9 +107,10 @@ check_user_exists() {
 execute_sql() {
     local sql="$1"
     local description="$2"
+    local database="${3:-postgres}"
 
     print_info "Executing: $description"
-    if PGPASSWORD="$PG_PASSWORD" psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d postgres -c "$sql"; then
+    if PGPASSWORD="$PG_PASSWORD" psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$database" -c "$sql"; then
         print_success "$description - completed"
     else
         print_error "$description - failed"
@@ -212,55 +213,53 @@ main() {
     # Execute SQL commands
     execute_sql "CREATE DATABASE $DBNAME;" "Create database $DBNAME"
 
-    execute_sql "\c $DBNAME;" "Connect to database $DBNAME"
+    execute_sql "ALTER SCHEMA public RENAME TO $USER_OWNER;" "Connect to database $DBNAME and rename schema to $USER_OWNER" "$DBNAME"
 
-    execute_sql "ALTER SCHEMA public RENAME TO $USER_OWNER;" "Rename schema to $USER_OWNER"
+    execute_sql "ALTER DATABASE $DBNAME SET search_path TO $USER_OWNER, public;" "Set search path" "$DBNAME"
 
-    execute_sql "ALTER DATABASE $DBNAME SET search_path TO $USER_OWNER, public;" "Set search path"
+    execute_sql "CREATE USER $USER_APP WITH PASSWORD '$USER_APP_PASSWORD';" "Create application user $USER_APP" "postgres"
 
-    execute_sql "CREATE USER $USER_APP WITH PASSWORD '$USER_APP_PASSWORD';" "Create application user $USER_APP"
+    execute_sql "CREATE USER $USER_OWNER WITH PASSWORD '$USER_OWNER_PASSWORD';" "Create owner user $USER_OWNER" "postgres"
 
-    execute_sql "CREATE USER $USER_OWNER WITH PASSWORD '$USER_OWNER_PASSWORD';" "Create owner user $USER_OWNER"
+    execute_sql "GRANT CONNECT ON DATABASE $DBNAME TO $USER_OWNER;" "Grant connect to owner user" "postgres"
 
-    execute_sql "GRANT CONNECT ON DATABASE $DBNAME TO $USER_OWNER;" "Grant connect to owner user"
+    execute_sql "REVOKE ALL ON DATABASE $DBNAME FROM PUBLIC;" "Revoke public database privileges" "postgres"
 
-    execute_sql "REVOKE ALL ON DATABASE $DBNAME FROM PUBLIC;" "Revoke public database privileges"
+    execute_sql "REVOKE CREATE ON SCHEMA $USER_OWNER FROM PUBLIC;" "Revoke public schema create privileges" "$DBNAME"
 
-    execute_sql "REVOKE CREATE ON SCHEMA $USER_OWNER FROM PUBLIC;" "Revoke public schema create privileges"
+    execute_sql "CREATE ROLE $ROLE_RW;" "Create read-write role $ROLE_RW" "postgres"
 
-    execute_sql "CREATE ROLE $ROLE_RW;" "Create read-write role $ROLE_RW"
+    execute_sql "GRANT CONNECT ON DATABASE $DBNAME TO $ROLE_RW;" "Grant connect to read-write role" "postgres"
 
-    execute_sql "GRANT CONNECT ON DATABASE $DBNAME TO $ROLE_RW;" "Grant connect to read-write role"
+    execute_sql "GRANT USAGE ON SCHEMA $USER_OWNER TO $ROLE_RW;" "Grant schema usage to read-write role" "$DBNAME"
 
-    execute_sql "GRANT USAGE ON SCHEMA $USER_OWNER TO $ROLE_RW;" "Grant schema usage to read-write role"
+    execute_sql "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA $USER_OWNER TO $ROLE_RW;" "Grant table permissions to read-write role" "$DBNAME"
 
-    execute_sql "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA $USER_OWNER TO $ROLE_RW;" "Grant table permissions to read-write role"
+    execute_sql "ALTER DEFAULT PRIVILEGES FOR ROLE $USER_OWNER GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO $ROLE_RW;" "Set default table privileges for read-write role" "$DBNAME"
 
-    execute_sql "ALTER DEFAULT PRIVILEGES FOR ROLE $USER_OWNER GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO $ROLE_RW;" "Set default table privileges for read-write role"
+    execute_sql "GRANT USAGE ON ALL SEQUENCES IN SCHEMA $USER_OWNER TO $ROLE_RW;" "Grant sequence usage to read-write role" "$DBNAME"
 
-    execute_sql "GRANT USAGE ON ALL SEQUENCES IN SCHEMA $USER_OWNER TO $ROLE_RW;" "Grant sequence usage to read-write role"
+    execute_sql "ALTER DEFAULT PRIVILEGES FOR ROLE $USER_OWNER GRANT USAGE, SELECT ON SEQUENCES TO $ROLE_RW;" "Set default sequence privileges for read-write role" "$DBNAME"
 
-    execute_sql "ALTER DEFAULT PRIVILEGES FOR ROLE $USER_OWNER GRANT USAGE, SELECT ON SEQUENCES TO $ROLE_RW;" "Set default sequence privileges for read-write role"
+    execute_sql "ALTER DEFAULT PRIVILEGES FOR ROLE $USER_OWNER GRANT EXECUTE ON FUNCTIONS TO $ROLE_RW;" "Set default function privileges for read-write role" "$DBNAME"
 
-    execute_sql "ALTER DEFAULT PRIVILEGES FOR ROLE $USER_OWNER GRANT EXECUTE ON FUNCTIONS TO $ROLE_RW;" "Set default function privileges for read-write role"
+    execute_sql "CREATE ROLE $ROLE_RC;" "Create creator role $ROLE_RC" "postgres"
 
-    execute_sql "CREATE ROLE $ROLE_RC;" "Create creator role $ROLE_RC"
+    execute_sql "GRANT CONNECT ON DATABASE $DBNAME TO $ROLE_RC;" "Grant connect to creator role" "postgres"
 
-    execute_sql "GRANT CONNECT ON DATABASE $DBNAME TO $ROLE_RC;" "Grant connect to creator role"
+    execute_sql "GRANT USAGE, CREATE ON SCHEMA $USER_OWNER TO $ROLE_RC;" "Grant schema usage and create to creator role" "$DBNAME"
 
-    execute_sql "GRANT USAGE, CREATE ON SCHEMA $USER_OWNER TO $ROLE_RC;" "Grant schema usage and create to creator role"
+    execute_sql "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA $USER_OWNER TO $ROLE_RC;" "Grant table permissions to creator role" "$DBNAME"
 
-    execute_sql "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA $USER_OWNER TO $ROLE_RC;" "Grant table permissions to creator role"
+    execute_sql "GRANT USAGE ON ALL SEQUENCES IN SCHEMA $USER_OWNER TO $ROLE_RC;" "Grant sequence usage to creator role" "$DBNAME"
 
-    execute_sql "GRANT USAGE ON ALL SEQUENCES IN SCHEMA $USER_OWNER TO $ROLE_RC;" "Grant sequence usage to creator role"
+    execute_sql "GRANT TEMPORARY ON DATABASE $DBNAME TO $ROLE_RC;" "Grant temporary database access to creator role" "postgres"
 
-    execute_sql "GRANT TEMPORARY ON DATABASE $DBNAME TO $ROLE_RC;" "Grant temporary database access to creator role"
+    execute_sql "GRANT CREATE ON DATABASE $DBNAME TO $ROLE_RC;" "Grant database create to creator role" "postgres"
 
-    execute_sql "GRANT CREATE ON DATABASE $DBNAME TO $ROLE_RC;" "Grant database create to creator role"
+    execute_sql "GRANT $ROLE_RW TO $USER_APP;" "Grant read-write role to application user" "postgres"
 
-    execute_sql "GRANT $ROLE_RW TO $USER_APP;" "Grant read-write role to application user"
-
-    execute_sql "GRANT $ROLE_RC TO $USER_OWNER;" "Grant creator role to owner user"
+    execute_sql "GRANT $ROLE_RC TO $USER_OWNER;" "Grant creator role to owner user" "postgres"
 
     print_success "Database '$DBNAME' created successfully!"
     print_info "Database connection details:"
