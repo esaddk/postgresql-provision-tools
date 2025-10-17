@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# PostgreSQL Database Configuration Template
+# Copy this file to db_config.conf and modify the values as needed
+
+# Database Configuration
+DBNAME="myapp_db"
+
+# Usernames
+USER_APP="myapp_app"
+USER_OWNER="myapp_owner"
+
+# Role Names
+ROLE_RW="r_myapp_readwrite"
+ROLE_RC="r_myapp_creator"
+
+# PostgreSQL Connection Settings
+PG_USER="postgres"
+PG_HOST="localhost"
+PG_PORT="5432"
+
+# PostgreSQL Password (optional, will be prompted if not provided)
+# PG_PASSWORD="your_postgres_password"
+
+# User Passwords (optional, will be auto-generated if not provided)
+# USER_APP_PASSWORD="custom_app_password"
+# USER_OWNER_PASSWORD="custom_owner_password"
+
+# Optional: Save credentials to file after creation
+# SAVE_CREDENTIALS_FILE="credentials.txt"
+
+# Load Balancer Testing (Optional)
+# Set to "true" to enable connectivity testing via load balancer
+# ENABLE_LB_TEST="false"
+
+# Load Balancer Connection Settings (required if ENABLE_LB_TEST="true")
+# LB_HOST="your-loadbalancer-host.com"
+# LB_PORT="5432"
