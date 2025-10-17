@@ -10,9 +10,9 @@ A robust shell script for creating PostgreSQL databases with proper security con
 - 🔑 **Auto-Generated Passwords**: Generates secure passwords automatically
 - ✅ **Pre-flight Validation**: Checks for existing databases/users and validates configuration
 - 🛡️ **Error Handling**: Comprehensive error checking with colored output
-- 📝 **Credential Management**: Optional credential file generation
+- 📝 **Credential Management**: Automatic credential file saving with date format
 - ⚙️ **Flexible Configuration**: Dynamic configuration via external file
-- 🌐 **Load Balancer Testing**: Optional connectivity testing via load balancer
+- 🌐 **Connectivity Testing**: Mandatory app and owner user testing via load balancer or direct instance
 
 ## Quick Start
 
@@ -69,6 +69,10 @@ ROLE_RC="myapp_creator"              # Creator role
 PG_USER="postgres"                   # PostgreSQL admin user
 PG_HOST="localhost"                  # PostgreSQL host
 PG_PORT="5432"                       # PostgreSQL port
+
+# Connection Testing (Mandatory)
+TEST_HOST="localhost"                # Test host - can be load balancer IP or direct instance IP
+TEST_PORT="5432"                     # Test port
 ```
 
 ### Optional Configuration
@@ -81,15 +85,8 @@ PG_PASSWORD="your_postgres_password"
 USER_APP_PASSWORD="custom_app_password"
 USER_OWNER_PASSWORD="custom_owner_password"
 
-# Save credentials to file after creation
-SAVE_CREDENTIALS_FILE="credentials.txt"
-
-# Load Balancer Testing (Optional)
-ENABLE_LB_TEST="true"                 # Set to "true" to enable LB testing
-
-# Load Balancer Connection Settings (required if ENABLE_LB_TEST="true")
-LB_HOST="your-loadbalancer-host.com"  # Load balancer hostname/IP
-LB_PORT="5432"                        # Load balancer port
+# Optional: Custom credential file name (overrides auto-generated filename)
+# SAVE_CREDENTIALS_FILE="my_custom_credentials.txt"
 ```
 
 ## Database Schema and Permissions
@@ -154,17 +151,18 @@ USER_APP_PASSWORD="MySecureAppPassword123!"
 USER_OWNER_PASSWORD="MySecureOwnerPassword456!"
 ```
 
-### Save Credentials to File
+### Automatic Credential Saving
 
-Add this to your config file:
-
-```bash
-SAVE_CREDENTIALS_FILE="my_database_credentials.txt"
+When passwords are auto-generated, credentials are automatically saved to a file with the format:
+```
+cred_{DBNAME}_{DDMMYYYY}.txt
 ```
 
-After running, you'll get a file like:
+For example: `cred_myapp_db_15012024.txt`
+
+The credential file contains:
 ```
-# Database Credentials - 2024-01-15 14:30:25
+# Database Credentials - Mon Jan 15 14:30:25 UTC 2024
 Database: myapp_db
 Host: localhost
 Port: 5432
@@ -176,6 +174,16 @@ Owner User: myapp_owner
 Owner Password: aJ5hG1sL6dF3pZ9t
 ```
 
+### Custom Credential File Name (Optional)
+
+If you prefer a custom filename, add this to your config file:
+
+```bash
+SAVE_CREDENTIALS_FILE="my_database_credentials.txt"
+```
+
+This will override the automatic filename generation.
+
 ## Command Line Options
 
 ```bash
@@ -183,41 +191,40 @@ Owner Password: aJ5hG1sL6dF3pZ9t
 ./create_db.sh --help         # Show help message
 ```
 
-## Load Balancer Testing
+## Connectivity Testing
 
-The script includes optional connectivity testing to verify that the created database is accessible via a load balancer.
+The script includes mandatory connectivity testing to verify that the created database is accessible. The test can be performed via either a load balancer or direct instance connection.
 
-### Enabling Load Balancer Testing
+### Configuring Connectivity Testing
 
 Add these settings to your configuration file:
 
 ```bash
-# Enable load balancer testing
-ENABLE_LB_TEST="true"
-
-# Load balancer connection details
-LB_HOST="your-loadbalancer.example.com"
-LB_PORT="5432"
+# Connection Testing (Mandatory)
+TEST_HOST="your-loadbalancer.example.com"    # Can be load balancer IP or direct instance IP
+TEST_PORT="5432"
 ```
 
 ### What Gets Tested
 
-When enabled, the script will test connectivity for both users:
+The script tests connectivity for both users:
 
-1. **Owner User Connection**: Verifies the owner can connect via load balancer
-2. **Application User Connection**: Verifies the app user can connect via load balancer
+1. **Application User Connection (Mandatory)**: Verifies the app user can connect via the specified host
+
+2. **Owner User Connection (Mandatory)**: Verifies the owner can connect via the specified host
 
 ### Test Results
 
-- ✅ **Success**: Both users can connect via the load balancer
+- ✅ **Success**: Both application user and owner user can connect
 - ❌ **Failure**: Script exits with error if either user cannot connect
 
 ### Use Cases
 
-- Verify load balancer configuration after database setup
+- Verify database accessibility after setup
+- Test connectivity via load balancer or direct instance
 - Ensure network connectivity between application and database
 - Validate that database users are properly configured for remote access
-- Test database failover scenarios
+- Test database failover scenarios by testing different endpoints
 
 ## Error Handling
 
@@ -230,11 +237,11 @@ The script includes comprehensive error checking:
 - ✅ Duplicate database detection
 - ✅ Duplicate user detection
 - ✅ SQL execution success/failure
-- ✅ Load balancer connectivity (when enabled)
+- ✅ Connectivity testing (mandatory for both app and owner users)
 
 ## Security Considerations
 
-- 🔒 Auto-generated passwords are 25 characters long using base64 encoding
+- 🔒 Auto-generated passwords are 16 characters long using base64 encoding
 - 🔒 Public database and schema privileges are revoked
 - 🔒 Principle of least privilege applied to user roles
 - 🔒 Credentials are only written to file if explicitly requested
@@ -260,18 +267,15 @@ The script includes comprehensive error checking:
    - Choose different usernames
    - Or drop existing users manually
 
-5. **"Load balancer connection failed"**
-   - Verify load balancer is running and accessible
-   - Check LB_HOST and LB_PORT in configuration
-   - Ensure load balancer is properly configured to route to PostgreSQL
-   - Verify network connectivity between script host and load balancer
-   - Check if load balancer health checks are passing
-
-6. **"Connectivity tests failed"**
+5. **"Connectivity tests failed"**
+   - Verify TEST_HOST and TEST_PORT are correct and accessible
    - Ensure database users have proper host-based authentication
-   - Check pg_hba.conf configuration for load balancer IP range
-   - Verify load balancer SSL/TLS configuration matches PostgreSQL
-   - Test connection manually with psql from script host
+   - Check pg_hba.conf configuration for the test host IP range
+   - Test connection manually with psql from script host:
+     - `psql -h TEST_HOST -p TEST_PORT -U USER_APP -d DBNAME`
+     - `psql -h TEST_HOST -p TEST_PORT -U USER_OWNER -d DBNAME`
+   - If using load balancer, verify it's properly configured to route to PostgreSQL
+   - Check network connectivity and firewall rules between script host and test host
 
 ### Debug Mode
 

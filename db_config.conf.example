@@ -26,13 +26,13 @@ PG_PORT="5432"
 # USER_APP_PASSWORD="custom_app_password"
 # USER_OWNER_PASSWORD="custom_owner_password"
 
-# Optional: Save credentials to file after creation
-# SAVE_CREDENTIALS_FILE="credentials.txt"
+# Connection Testing (Mandatory)
+# Test host can be either load balancer IP or direct instance IP
+TEST_HOST="localhost"
+TEST_PORT="5432"
 
-# Load Balancer Testing (Optional)
-# Set to "true" to enable connectivity testing via load balancer
-# ENABLE_LB_TEST="false"
+# Optional: Custom credential file name (overrides auto-generated filename)
+# SAVE_CREDENTIALS_FILE="my_custom_credentials.txt"
 
-# Load Balancer Connection Settings (required if ENABLE_LB_TEST="true")
-# LB_HOST="your-loadbalancer-host.com"
-# LB_PORT="5432"
+# Note: Credentials are automatically saved to cred_{DBNAME}_{DDMMYYYY}.txt
+# when passwords are auto-generated, unless SAVE_CREDENTIALS_FILE is specified

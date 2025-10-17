@@ -38,7 +38,7 @@ check_postgres() {
 
 # Function to validate configuration
 validate_config() {
-    local required_vars=("DBNAME" "USER_APP" "USER_OWNER" "ROLE_RW" "ROLE_RC" "PG_USER" "PG_HOST" "PG_PORT")
+    local required_vars=("DBNAME" "USER_APP" "USER_OWNER" "ROLE_RW" "ROLE_RC" "PG_USER" "PG_HOST" "PG_PORT" "TEST_HOST" "TEST_PORT")
 
     for var in "${required_vars[@]}"; do
         if [[ -z "${!var}" ]]; then
@@ -57,14 +57,6 @@ validate_config() {
     for user in "$USER_APP" "$USER_OWNER"; do
         if [[ ! "$user" =~ ^[a-zA-Z][a-zA-Z0-9_]*$ ]]; then
             print_error "Invalid user name: $user. Must start with letter and contain only letters, numbers, and underscores"
-            exit 1
-        fi
-    done
-
-    # Validate load balancer configuration if enabled
-    if [[ "$ENABLE_LB_TEST" == "true" ]]; then
-        if [[ -z "$LB_HOST" || -z "$LB_PORT" ]]; then
-            print_error "Load balancer test is enabled but LB_HOST or LB_PORT is not configured"
             exit 1
         fi
     fi
@@ -89,7 +81,7 @@ load_config() {
 
 # Function to generate random passwords
 generate_password() {
-    openssl rand -base64 32 | tr -d "=+/" | cut -c1-25
+    openssl rand -base64 32 | tr -d "=+/" | cut -c1-16
 }
 
 # Function to check if database exists
@@ -140,30 +132,28 @@ test_connectivity() {
 
 # Function to run all connectivity tests
 run_connectivity_tests() {
-    if [[ "$ENABLE_LB_TEST" != "true" ]]; then
-        print_info "Load balancer testing is disabled. Skipping connectivity tests."
-        return 0
-    fi
-
-    print_info "Starting connectivity tests via load balancer..."
+    print_info "Starting connectivity tests via ${TEST_HOST}:${TEST_PORT}..."
+    print_info "Note: This can be either a load balancer or direct instance IP"
 
     local test_failed=0
 
-    # Test owner user connection
-    if ! test_connectivity "$LB_HOST" "$LB_PORT" "$USER_OWNER" "$USER_OWNER_PASSWORD" "OWNER"; then
+    # Test app user connection (mandatory)
+    if ! test_connectivity "$TEST_HOST" "$TEST_PORT" "$USER_APP" "$USER_APP_PASSWORD" "APP"; then
+        print_error "Application user connection failed - this test is mandatory"
         test_failed=1
     fi
 
-    # Test app user connection
-    if ! test_connectivity "$LB_HOST" "$LB_PORT" "$USER_APP" "$USER_APP_PASSWORD" "APP"; then
+    # Test owner user connection (mandatory)
+    if ! test_connectivity "$TEST_HOST" "$TEST_PORT" "$USER_OWNER" "$USER_OWNER_PASSWORD" "OWNER"; then
+        print_error "Owner user connection failed - this test is mandatory"
         test_failed=1
     fi
 
     if [[ $test_failed -eq 0 ]]; then
-        print_success "All connectivity tests passed via load balancer!"
-        print_info "Database is accessible via ${LB_HOST}:${LB_PORT}"
+        print_success "All connectivity tests passed!"
+        print_info "Database is accessible via ${TEST_HOST}:${TEST_PORT}"
     else
-        print_error "Some connectivity tests failed. Please check your load balancer configuration."
+        print_error "Connectivity tests failed. Please check your network/database configuration."
         return 1
     fi
 
@@ -197,15 +187,20 @@ main() {
         exit 1
     fi
 
+    # Track if passwords are auto-generated
+    local auto_generated=false
+
     # Generate passwords if not provided
     if [[ -z "$USER_APP_PASSWORD" ]]; then
         USER_APP_PASSWORD=$(generate_password)
         print_info "Generated password for $USER_APP: $USER_APP_PASSWORD"
+        auto_generated=true
     fi
 
     if [[ -z "$USER_OWNER_PASSWORD" ]]; then
         USER_OWNER_PASSWORD=$(generate_password)
         print_info "Generated password for $USER_OWNER: $USER_OWNER_PASSWORD"
+        auto_generated=true
     fi
 
     print_info "Creating database: $DBNAME"
@@ -269,6 +264,25 @@ main() {
     print_info "  Application User: $USER_APP"
     print_info "  Owner User: $USER_OWNER"
 
+    # Auto-save credentials if passwords were auto-generated
+    if [[ "$auto_generated" == "true" ]]; then
+        local cred_file="cred_${DBNAME}_$(date +%d%m%Y).txt"
+        cat > "$cred_file" << EOF
+# Database Credentials - $(date)
+Database: $DBNAME
+Host: $PG_HOST
+Port: $PG_PORT
+
+Application User: $USER_APP
+Application Password: $USER_APP_PASSWORD
+
+Owner User: $USER_OWNER
+Owner Password: $USER_OWNER_PASSWORD
+EOF
+        print_success "Auto-generated credentials saved to: $cred_file"
+    fi
+
+    # Save credentials to custom file if specified
     if [[ -n "$SAVE_CREDENTIALS_FILE" ]]; then
         cat > "$SAVE_CREDENTIALS_FILE" << EOF
 # Database Credentials - $(date)
@@ -285,9 +299,9 @@ EOF
         print_success "Credentials saved to: $SAVE_CREDENTIALS_FILE"
     fi
 
-    # Run connectivity tests via load balancer if enabled
+    # Run connectivity tests (mandatory app user test)
     if ! run_connectivity_tests; then
-        print_error "Connectivity tests failed. Database was created but load balancer access is not working."
+        print_error "Connectivity tests failed. Database was created but access is not working."
         exit 1
     fi
 }
@@ -308,6 +322,9 @@ Options:
 Description:
     This script creates a PostgreSQL database with proper security configuration
     including users, roles, and permissions based on the provided configuration file.
+
+    Connection testing is mandatory for the application user and can be performed
+    via either load balancer IP or direct instance IP as specified in TEST_HOST.
 
 Examples:
     $0                          # Use default config file (db_config.conf)
