@@ -59,7 +59,7 @@ validate_config() {
             print_error "Invalid user name: $user. Must start with letter and contain only letters, numbers, and underscores"
             exit 1
         fi
-    fi
+    done
 }
 
 # Function to load configuration
