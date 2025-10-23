@@ -6,6 +6,48 @@
 
 set -e
 
+# Set up logging
+LOG_DIR="logs"
+TIMESTAMP=$(date +"%d%m%y_%H%M%S")
+LOG_FILE="$LOG_DIR/create_db_${TIMESTAMP}.log"
+
+# Create logs directory if it doesn't exist
+mkdir -p "$LOG_DIR" 2>/dev/null || true
+
+# Function to update log file name with database name
+update_log_filename() {
+    if [[ -n "$DBNAME" ]]; then
+        local new_log_file="$LOG_DIR/create_db_${DBNAME}_${TIMESTAMP}.log"
+        if [[ -f "$LOG_FILE" ]]; then
+            mv "$LOG_FILE" "$new_log_file"
+        fi
+        LOG_FILE="$new_log_file"
+    fi
+}
+
+# Create log file header
+cat > "$LOG_FILE" << EOF
+# PostgreSQL Database Creation Log
+# Started: $(date)
+# Command: ./create_db.sh $*
+# Working Directory: $(pwd)
+# User: $(whoami)
+# Host: $(hostname)
+
+===============================================================================
+
+EOF
+
+# Function to log and output
+log_and_print() {
+    local message="$1"
+    echo "$message" | tee -a "$LOG_FILE"
+}
+
+# Redirect all output to log file and terminal
+exec > >(tee -a "$LOG_FILE")
+exec 2>&1
+
 # Configuration file path
 CONFIG_FILE="${1:-db_config.conf}"
 
@@ -17,7 +59,7 @@ NC='\033[0m' # No Color
 
 # Function to print colored output
 print_error() {
-    echo -e "${RED}ERROR: $1${NC}" >&2
+    echo -e "${RED}ERROR: $1${NC}"
 }
 
 print_success() {
@@ -75,6 +117,9 @@ load_config() {
 
     # Validate loaded configuration
     validate_config
+
+    # Update log file name to include database name
+    update_log_filename
 
     print_info "Configuration loaded from: $CONFIG_FILE"
 }
@@ -302,8 +347,23 @@ EOF
     # Run connectivity tests (mandatory app user test)
     if ! run_connectivity_tests; then
         print_error "Connectivity tests failed. Database was created but access is not working."
+        # Add log footer before exit
+        cat >> "$LOG_FILE" << EOF
+
+===============================================================================
+# Completed: $(date)
+# Exit Code: 1 (Failed)
+EOF
         exit 1
     fi
+
+    # Add success log footer
+    cat >> "$LOG_FILE" << EOF
+
+===============================================================================
+# Completed: $(date)
+# Exit Code: 0 (Success)
+EOF
 }
 
 # Help function
