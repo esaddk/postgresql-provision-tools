@@ -131,13 +131,13 @@ generate_password() {
 
 # Function to check if database exists
 check_database_exists() {
-    psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$DBNAME'" | grep -q 1
+    PGPASSWORD="$PG_PASSWORD" psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$DBNAME'" | grep -q 1
 }
 
 # Function to check if user exists
 check_user_exists() {
     local username="$1"
-    psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='$username'" | grep -q 1
+    PGPASSWORD="$PG_PASSWORD" psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='$username'" | grep -q 1
 }
 
 # Function to execute SQL commands
